@@ -83,7 +83,7 @@
         this.lives = 3;
         this.fallSpeed = 180;
         /* On portrait the field is half as wide, so slow the player down */
-        this.playerSpeedBonus = isPortrait ? 10 : 40;
+        this.playerSpeedBonus = isPortrait ? 0 : 40;
         this.playerSpeed = this.fallSpeed + this.playerSpeedBonus;
         this.target = null;
         this.startOverlay = [];
@@ -140,6 +140,12 @@
 
         this.cursors = this.input.keyboard.createCursorKeys();
         this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+        /* Unlock audio on first user tap (mobile browsers require this) */
+        this.input.on('pointerdown', () => {
+          const ctx = this.sound.context;
+          if (ctx && ctx.state === 'suspended') ctx.resume();
+        }, this);
 
         /* Touch controls: hold left/right side of screen to move */
         this.touchDir = 0;
@@ -228,15 +234,15 @@
         const cs = isPortrait ? 0.6 : 1; /* scale cactus sizes for portrait */
         const cactus1 = this.add.graphics();
         cactus1.fillStyle(0x2f7d32, 1);
-        cactus1.fillRoundedRect(W * 0.1125, H * 0.69, 18 * cs, 90 * cs, 6 * cs);
-        cactus1.fillRoundedRect(W * 0.1125 - 14 * cs, H * 0.69 + 25 * cs, 14 * cs, 34 * cs, 6 * cs);
-        cactus1.fillRoundedRect(W * 0.1125 + 18 * cs, H * 0.69 + 35 * cs, 14 * cs, 30 * cs, 6 * cs);
+        cactus1.fillRoundedRect(W * 0.1125, H * 0.76, 18 * cs, 90 * cs, 6 * cs);
+        cactus1.fillRoundedRect(W * 0.1125 - 14 * cs, H * 0.76 + 25 * cs, 14 * cs, 34 * cs, 6 * cs);
+        cactus1.fillRoundedRect(W * 0.1125 + 18 * cs, H * 0.76 + 35 * cs, 14 * cs, 30 * cs, 6 * cs);
         cactus1.setDepth(-15);
 
         const cactus2 = this.add.graphics();
         cactus2.fillStyle(0x2f7d32, 1);
-        cactus2.fillRoundedRect(W * 0.9, H * 0.717, 18 * cs, 82 * cs, 6 * cs);
-        cactus2.fillRoundedRect(W * 0.9 - 14 * cs, H * 0.717 + 20 * cs, 14 * cs, 28 * cs, 6 * cs);
+        cactus2.fillRoundedRect(W * 0.9, H * 0.78, 18 * cs, 82 * cs, 6 * cs);
+        cactus2.fillRoundedRect(W * 0.9 - 14 * cs, H * 0.78 + 20 * cs, 14 * cs, 28 * cs, 6 * cs);
         cactus2.setDepth(-15);
       }
 
@@ -371,13 +377,21 @@
         const pw = Math.min(W - 40, 520);
         const panel = this.drawPanel(cx, cy, pw, 285);
 
-        const endText = this.add.text(cx, cy - 80, 'You saved the date ' + this.score + ' times!\nNow save it once more:', {
-          fontSize: isPortrait ? '12px' : '17px',
+        const endFontSize = isPortrait ? '12px' : '17px';
+        const endLine1 = this.add.text(cx, cy - 95, 'You saved the date ' + this.score + ' times!', {
+          fontSize: endFontSize,
           color: '#ffffff',
           align: 'center',
-          lineSpacing: 24,
           fontStyle: 'bold',
           wordWrap: { width: pw - 60 },
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5);
+
+        const endLine2 = this.add.text(cx, endLine1.y + endLine1.height + 14, 'Now save it once more:', {
+          fontSize: endFontSize,
+          color: '#ffffff',
+          align: 'center',
+          fontStyle: 'bold',
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
@@ -394,7 +408,7 @@
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
-        this.endOverlay = [panel, endText, dateText, restartText];
+        this.endOverlay = [panel, endLine1, endLine2, dateText, restartText];
       }
 
       update() {
