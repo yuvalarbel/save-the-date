@@ -356,7 +356,54 @@
         this.gameStarted = true;
         this.clearOverlay(this.startOverlay);
         this.startOverlay = [];
+        if (isPortrait) this.showTouchHint();
         this.spawnTarget();
+      }
+
+      showTouchHint() {
+        this.touchHintItems = [];
+        const topY = 110;
+        const botY = H - 130;
+        const midY = topY + (botY - topY) / 2;
+        const alpha = 0.18;
+        const dep = -5;
+
+        /* Vertical divider line */
+        const line = this.add.rectangle(W / 2, midY, 2, botY - topY, 0x000000, alpha).setDepth(dep);
+        this.touchHintItems.push(line);
+
+        const arrowStyle = {
+          fontSize: '32px',
+          color: '#000000',
+          fontFamily: "'Press Start 2P', monospace"
+        };
+        const labelStyle = {
+          fontSize: '7px',
+          color: '#000000',
+          align: 'center',
+          fontFamily: "'Press Start 2P', monospace"
+        };
+
+        /* Left side */
+        const leftArrow = this.add.text(W * 0.25, midY - 20, '<', arrowStyle)
+          .setOrigin(0.5).setAlpha(alpha).setDepth(dep);
+        const leftLabel = this.add.text(W * 0.25, midY + 20, 'Touch to\nmove left', labelStyle)
+          .setOrigin(0.5).setAlpha(alpha).setDepth(dep);
+        this.touchHintItems.push(leftArrow, leftLabel);
+
+        /* Right side */
+        const rightArrow = this.add.text(W * 0.75, midY - 20, '>', arrowStyle)
+          .setOrigin(0.5).setAlpha(alpha).setDepth(dep);
+        const rightLabel = this.add.text(W * 0.75, midY + 20, 'Touch to\nmove right', labelStyle)
+          .setOrigin(0.5).setAlpha(alpha).setDepth(dep);
+        this.touchHintItems.push(rightArrow, rightLabel);
+      }
+
+      removeTouchHint() {
+        if (this.touchHintItems) {
+          this.touchHintItems.forEach(item => item.destroy());
+          this.touchHintItems = null;
+        }
       }
 
       getRandomGirlTexture() {
@@ -391,6 +438,7 @@
         this.target = null;
         this.score += 1;
         this.scoreText.setText(`Caught: ${this.score}`);
+        if (this.score >= 3 && this.touchHintItems) this.removeTouchHint();
         this.fallSpeed += 14;
         this.playerSpeed = this.fallSpeed + this.playerSpeedBonus;
         this.spawnTarget();
@@ -424,18 +472,18 @@
         const pw = Math.min(W - 40, 520);
         const panel = this.drawPanel(cx, cy, pw, 285);
 
-        const endFontSize = isPortrait ? '12px' : '17px';
         const endLine1 = this.add.text(cx, cy - 95, 'You saved the date ' + this.score + ' times!', {
-          fontSize: endFontSize,
+          fontSize: isPortrait ? '11px' : '15px',
           color: '#ffffff',
           align: 'center',
+          lineSpacing: 6,
           fontStyle: 'bold',
           wordWrap: { width: pw - 60 },
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
-        const endLine2 = this.add.text(cx, endLine1.y + endLine1.height + 14, 'Now save it once more:', {
-          fontSize: endFontSize,
+        const endLine2 = this.add.text(cx, endLine1.y + endLine1.height + 16, 'Now save it once more:', {
+          fontSize: isPortrait ? '13px' : '19px',
           color: '#ffffff',
           align: 'center',
           fontStyle: 'bold',
