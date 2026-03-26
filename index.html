@@ -57,7 +57,7 @@
     /* Pick portrait or landscape based on screen shape */
     const isPortrait = window.innerHeight > window.innerWidth;
     const W = isPortrait ? 400 : 800;
-    const H = isPortrait ? 680 : 600;
+    const H = 600;
 
     class DodgerScene extends Phaser.Scene {
       constructor() {
@@ -82,7 +82,9 @@
         this.score = 0;
         this.lives = 3;
         this.fallSpeed = 180;
-        this.playerSpeed = this.fallSpeed + 40;
+        /* On portrait the field is half as wide, so slow the player down */
+        this.playerSpeedBonus = isPortrait ? 10 : 40;
+        this.playerSpeed = this.fallSpeed + this.playerSpeedBonus;
         this.target = null;
         this.startOverlay = [];
         this.endOverlay = [];
@@ -177,8 +179,16 @@
         }
       }
 
-      playCatchSound() {
+      getAudioContext() {
         const ctx = this.sound.context;
+        if (!ctx) return null;
+        /* Mobile browsers suspend AudioContext until a user gesture resumes it */
+        if (ctx.state === 'suspended') ctx.resume();
+        return ctx;
+      }
+
+      playCatchSound() {
+        const ctx = this.getAudioContext();
         if (!ctx) return;
         const oscillator = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -193,7 +203,7 @@
       }
 
       playMissSound() {
-        const ctx = this.sound.context;
+        const ctx = this.getAudioContext();
         if (!ctx) return;
         const oscillator = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -215,17 +225,18 @@
         this.add.ellipse(W * 0.7, H * 0.89, W * 0.775, 170, 0xdca24d).setDepth(-17);
         this.add.ellipse(W * 0.45, H * 0.98, W * 1.125, 220, 0xc68642).setDepth(-16);
 
+        const cs = isPortrait ? 0.6 : 1; /* scale cactus sizes for portrait */
         const cactus1 = this.add.graphics();
         cactus1.fillStyle(0x2f7d32, 1);
-        cactus1.fillRoundedRect(W * 0.1125, H * 0.69, 18, 90, 6);
-        cactus1.fillRoundedRect(W * 0.095, H * 0.733, 14, 34, 6);
-        cactus1.fillRoundedRect(W * 0.135, H * 0.75, 14, 30, 6);
+        cactus1.fillRoundedRect(W * 0.1125, H * 0.69, 18 * cs, 90 * cs, 6 * cs);
+        cactus1.fillRoundedRect(W * 0.1125 - 14 * cs, H * 0.69 + 25 * cs, 14 * cs, 34 * cs, 6 * cs);
+        cactus1.fillRoundedRect(W * 0.1125 + 18 * cs, H * 0.69 + 35 * cs, 14 * cs, 30 * cs, 6 * cs);
         cactus1.setDepth(-15);
 
         const cactus2 = this.add.graphics();
         cactus2.fillStyle(0x2f7d32, 1);
-        cactus2.fillRoundedRect(W * 0.9, H * 0.717, 18, 82, 6);
-        cactus2.fillRoundedRect(W * 0.8825, H * 0.753, 14, 28, 6);
+        cactus2.fillRoundedRect(W * 0.9, H * 0.717, 18 * cs, 82 * cs, 6 * cs);
+        cactus2.fillRoundedRect(W * 0.9 - 14 * cs, H * 0.717 + 20 * cs, 14 * cs, 28 * cs, 6 * cs);
         cactus2.setDepth(-15);
       }
 
@@ -328,7 +339,7 @@
         this.score += 1;
         this.scoreText.setText(`Caught: ${this.score}`);
         this.fallSpeed += 14;
-        this.playerSpeed = this.fallSpeed + 40;
+        this.playerSpeed = this.fallSpeed + this.playerSpeedBonus;
         this.spawnTarget();
       }
 
@@ -364,7 +375,7 @@
           fontSize: isPortrait ? '12px' : '17px',
           color: '#ffffff',
           align: 'center',
-          lineSpacing: 12,
+          lineSpacing: 24,
           fontStyle: 'bold',
           wordWrap: { width: pw - 60 },
           fontFamily: "'Press Start 2P', monospace"
