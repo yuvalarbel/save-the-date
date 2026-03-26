@@ -59,6 +59,7 @@
     const isPortrait = window.innerHeight > window.innerWidth;
     const W = isPortrait ? 400 : 800;
     const H = 600;
+    let _soundOn = true; /* persists across scene restarts */
 
     class DodgerScene extends Phaser.Scene {
       constructor() {
@@ -134,7 +135,7 @@
         });
 
         /* Sound toggle button */
-        this.soundOn = true;
+        this.soundOn = _soundOn;
         this.createSoundToggle();
 
         const playerTexture = this.textures.exists('player-custom') ? 'player-custom' : 'player-fallback';
@@ -201,12 +202,13 @@
 
         /* Red X overlay for muted state */
         this.muteX = this.add.graphics().setDepth(101);
-        this.muteX.setVisible(false);
+        this.drawMuteX(bx, by, iconSize);
 
         this.soundIcon.setInteractive({ useHandCursor: true });
         this.soundIcon.on('pointerdown', (pointer, lx, ly, event) => {
           event.stopPropagation();
           this.soundOn = !this.soundOn;
+          _soundOn = this.soundOn;
           this.drawMuteX(bx, by, iconSize);
         });
       }
@@ -330,6 +332,7 @@
           fontSize: isPortrait ? '10px' : '12px',
           color: '#d1d5db',
           align: 'center',
+          lineSpacing: 8,
           wordWrap: { width: pw - 60 },
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
@@ -373,28 +376,29 @@
         this.touchHintItems.push(line);
 
         const arrowStyle = {
-          fontSize: '32px',
+          fontSize: '52px',
           color: '#000000',
           fontFamily: "'Press Start 2P', monospace"
         };
         const labelStyle = {
-          fontSize: '7px',
+          fontSize: '12px',
           color: '#000000',
           align: 'center',
+          lineSpacing: 4,
           fontFamily: "'Press Start 2P', monospace"
         };
 
         /* Left side */
-        const leftArrow = this.add.text(W * 0.25, midY - 20, '<', arrowStyle)
+        const leftArrow = this.add.text(W * 0.25, midY - 35, '<', arrowStyle)
           .setOrigin(0.5).setAlpha(alpha).setDepth(dep);
-        const leftLabel = this.add.text(W * 0.25, midY + 20, 'Touch to\nmove left', labelStyle)
+        const leftLabel = this.add.text(W * 0.25, midY + 30, 'Touch to\nmove left', labelStyle)
           .setOrigin(0.5).setAlpha(alpha).setDepth(dep);
         this.touchHintItems.push(leftArrow, leftLabel);
 
         /* Right side */
-        const rightArrow = this.add.text(W * 0.75, midY - 20, '>', arrowStyle)
+        const rightArrow = this.add.text(W * 0.75, midY - 35, '>', arrowStyle)
           .setOrigin(0.5).setAlpha(alpha).setDepth(dep);
-        const rightLabel = this.add.text(W * 0.75, midY + 20, 'Touch to\nmove right', labelStyle)
+        const rightLabel = this.add.text(W * 0.75, midY + 30, 'Touch to\nmove right', labelStyle)
           .setOrigin(0.5).setAlpha(alpha).setDepth(dep);
         this.touchHintItems.push(rightArrow, rightLabel);
       }
@@ -473,7 +477,7 @@
         const panel = this.drawPanel(cx, cy, pw, 285);
 
         const endLine1 = this.add.text(cx, cy - 95, 'You saved the date ' + this.score + ' times!', {
-          fontSize: isPortrait ? '11px' : '15px',
+          fontSize: isPortrait ? '10px' : '15px',
           color: '#ffffff',
           align: 'center',
           lineSpacing: 6,
