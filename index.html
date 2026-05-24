@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Save The Date</title>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <style>
     
     @font-face {
@@ -60,6 +61,57 @@
     const W = isPortrait ? 400 : 800;
     const H = 600;
     let _soundOn = true; /* persists across scene restarts */
+    let _playerName = ''; /* persists across restarts */
+
+    /* ── Leaderboard module ── */
+    const SUPABASE_URL = 'https://tlufrkdpgcxesznarsev.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_qv58_peCrSH-N3k7k2h_jA_oj-r2tLo';
+    const EDGE_FN_URL = SUPABASE_URL + '/functions/v1/leaderboard';
+    const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const Leaderboard = {
+      _token: null,
+
+      async startSession() {
+        try {
+          const res = await fetch(EDGE_FN_URL + '?action=start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            this._token = data.token;
+          }
+        } catch (e) { console.warn('Leaderboard start failed', e); }
+      },
+
+      async submitScore(username, score) {
+        if (!this._token) return false;
+        try {
+          const res = await fetch(EDGE_FN_URL + '?action=submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: this._token, username, score })
+          });
+          this._token = null; /* one use per session */
+          return res.ok;
+        } catch (e) { console.warn('Leaderboard submit failed', e); return false; }
+      },
+
+      async getScores() {
+        try {
+          const { data, error } = await _sb
+            .from('game_sessions')
+            .select('username, score, submitted_at')
+            .not('submitted_at', 'is', null)
+            .order('score', { ascending: false })
+            .order('submitted_at', { ascending: true })
+            .limit(10);
+          if (error) throw error;
+          return data || [];
+        } catch (e) { console.warn('Leaderboard fetch failed', e); return []; }
+      }
+    };
 
     class DodgerScene extends Phaser.Scene {
       constructor() {
@@ -80,8 +132,13 @@
       }
 
       create() {
+        /* Clean up any leftover HTML input from previous game */
+        const oldInput = document.querySelector('input[placeholder="Your name"]');
+        if (oldInput) oldInput.remove();
+
         this.gameStarted = false;
         this.gameOver = false;
+        this._endPhase = null;
         this.score = 0;
         this.lives = 3;
         this.fallSpeed = 180;
@@ -158,7 +215,7 @@
         this.touchDir = 0;
         this.input.on('pointerdown', (pointer) => {
           if (this.gameOver) {
-            this.scene.restart();
+            if (this._endPhase === 'done') this.scene.restart();
             return;
           }
           if (!this.gameStarted) {
@@ -345,7 +402,93 @@
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         button.on('pointerdown', () => this.startGame());
-        this.startOverlay = [panel, title, subtitleMain, subtitleSub, subtitleHint, button];
+
+        const lbBtn = this.add.text(cx, cy + 130, 'LEADERBOARD', {
+          fontSize: isPortrait ? '8px' : '12px',
+          color: '#9ca3af',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        lbBtn.on('pointerdown', () => this.showLeaderboardScreen());
+
+        this.startOverlay = [panel, title, subtitleMain, subtitleSub, subtitleHint, button, lbBtn];
+      }
+
+      async showLeaderboardScreen() {
+        this.clearOverlay(this.startOverlay);
+        this.startOverlay = [];
+        const cx = W / 2;
+        const cy = H / 2;
+        const pw = Math.min(W - 40, 560);
+        const ph = 380;
+        const panel = this.drawPanel(cx, cy, pw, ph);
+        const items = [panel];
+
+        const lbTitle = this.add.text(cx, cy - (isPortrait ? 165 : 170), 'LEADERBOARD', {
+          fontSize: isPortrait ? '14px' : '18px',
+          color: '#00ffcc',
+          fontStyle: 'bold',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5);
+        items.push(lbTitle);
+
+        const loading = this.add.text(cx, cy, 'Loading...', {
+          fontSize: isPortrait ? '8px' : '11px',
+          color: '#9ca3af',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5);
+        items.push(loading);
+
+        this.startOverlay = items;
+
+        const scores = await Leaderboard.getScores();
+        loading.destroy();
+
+        const colW = pw - 40;
+        const startY = lbTitle.y + 32;
+        const rowH = isPortrait ? 20 : 24;
+        const fs = isPortrait ? '7px' : '11px';
+
+        if (scores.length === 0) {
+          const noData = this.add.text(cx, startY + 40, 'No scores yet!\nBe the first!', {
+            fontSize: fs, color: '#9ca3af', align: 'center', lineSpacing: 8,
+            fontFamily: "'Press Start 2P', monospace"
+          }).setOrigin(0.5);
+          items.push(noData);
+        } else {
+          scores.slice(0, 10).forEach((entry, i) => {
+            const y = startY + i * rowH;
+            const rank = this.add.text(cx - colW / 2, y, (i + 1) + '.', {
+              fontSize: fs, color: i < 3 ? '#fbbf24' : '#d1d5db',
+              fontFamily: "'Press Start 2P', monospace"
+            });
+            const name = this.add.text(cx - colW / 2 + (isPortrait ? 26 : 34), y, (entry.username || '???').substring(0, 16), {
+              fontSize: fs, color: '#ffffff',
+              fontFamily: "'Press Start 2P', monospace"
+            });
+            const sc = this.add.text(cx + colW / 2, y, String(entry.score), {
+              fontSize: fs, color: '#00ffcc',
+              fontFamily: "'Press Start 2P', monospace"
+            }).setOrigin(1, 0);
+            items.push(rank, name, sc);
+          });
+        }
+
+        const backBtn = this.add.text(cx, cy + (isPortrait ? 160 : 170), 'BACK', {
+          fontSize: isPortrait ? '10px' : '14px',
+          color: '#00ffcc',
+          fontStyle: 'bold',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        items.push(backBtn);
+
+        backBtn.on('pointerdown', () => {
+          this.clearOverlay(this.startOverlay);
+          this.startOverlay = [];
+          this.showStartScreen();
+        });
+
+        this.startOverlay = items;
       }
 
       clearOverlay(items) {
@@ -360,6 +503,7 @@
         this.clearOverlay(this.startOverlay);
         this.startOverlay = [];
         if (isPortrait) this.showTouchHint();
+        Leaderboard.startSession(); /* fire-and-forget session token request */
         this.spawnTarget();
       }
 
@@ -470,13 +614,15 @@
       endGame() {
         if (this.gameOver) return;
         this.gameOver = true;
+        this._endPhase = 'name'; /* 'name' -> 'submitting' -> 'leaderboard' -> 'done' */
 
         const cx = W / 2;
         const cy = H / 2;
         const pw = Math.min(W - 40, 520);
-        const panel = this.drawPanel(cx, cy, pw, 285);
+        const ph = isPortrait ? 380 : 400;
+        const panel = this.drawPanel(cx, cy, pw, ph);
 
-        const endLine1 = this.add.text(cx, cy - 95, 'You saved the date ' + this.score + ' times!', {
+        const endLine1 = this.add.text(cx, cy - (isPortrait ? 160 : 170), 'You saved the date ' + this.score + ' times!', {
           fontSize: isPortrait ? '10px' : '15px',
           color: '#ffffff',
           align: 'center',
@@ -486,7 +632,7 @@
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
-        const endLine2 = this.add.text(cx, endLine1.y + endLine1.height + 16, 'Now save it once more:', {
+        const endLine2 = this.add.text(cx, endLine1.y + endLine1.height + 12, 'Now save it once more:', {
           fontSize: isPortrait ? '13px' : '19px',
           color: '#ffffff',
           align: 'center',
@@ -494,26 +640,152 @@
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
-        const dateText = this.add.text(cx, cy + 20, '5.6.26', {
-          fontSize: isPortrait ? '40px' : '48px',
+        const dateText = this.add.text(cx, endLine2.y + endLine2.height + (isPortrait ? 14 : 18), '5.6.26', {
+          fontSize: isPortrait ? '36px' : '44px',
           color: '#00ffcc',
           fontStyle: 'bold',
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
-        const restartText = this.add.text(cx, cy + 105, 'Tap or press Space to restart', {
-          fontSize: isPortrait ? '8px' : '14px',
-          color: '#ffffff',
+        /* ── Name input for leaderboard ── */
+        const nameLabel = this.add.text(cx, dateText.y + dateText.height / 2 + (isPortrait ? 20 : 26), 'Enter your name:', {
+          fontSize: isPortrait ? '8px' : '11px',
+          color: '#d1d5db',
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
-        this.endOverlay = [panel, endLine1, endLine2, dateText, restartText];
+        /* HTML input overlay for name entry */
+        const inputEl = document.createElement('input');
+        inputEl.type = 'text';
+        inputEl.maxLength = 24;
+        inputEl.value = _playerName;
+        inputEl.placeholder = 'Your name';
+        inputEl.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);' +
+          'width:200px;padding:8px 12px;font-size:16px;text-align:center;border:2px solid #00ffcc;' +
+          'border-radius:6px;background:#020617;color:#fff;font-family:"Press Start 2P",monospace;' +
+          'outline:none;z-index:9999;';
+        document.body.appendChild(inputEl);
+        inputEl.focus();
+
+        /* Position the input relative to the game canvas */
+        const positionInput = () => {
+          const canvas = document.querySelector('#game-container canvas');
+          if (!canvas) return;
+          const rect = canvas.getBoundingClientRect();
+          const scaleY = rect.height / H;
+          const scaleX = rect.width / W;
+          const inputY = nameLabel.y + 22;
+          inputEl.style.left = (rect.left + cx * scaleX) + 'px';
+          inputEl.style.top = (rect.top + inputY * scaleY) + 'px';
+          inputEl.style.width = Math.min(200, pw * scaleX * 0.6) + 'px';
+          inputEl.style.fontSize = Math.max(10, 14 * scaleX) + 'px';
+        };
+        positionInput();
+
+        const submitBtn = this.add.text(cx, nameLabel.y + (isPortrait ? 50 : 56), 'SUBMIT SCORE', {
+          fontSize: isPortrait ? '10px' : '14px',
+          color: '#020617',
+          fontStyle: 'bold',
+          fontFamily: "'Press Start 2P', monospace",
+          backgroundColor: '#00ffcc',
+          padding: { x: 12, y: 8 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        const skipBtn = this.add.text(cx, submitBtn.y + submitBtn.height + (isPortrait ? 12 : 16), 'Skip', {
+          fontSize: isPortrait ? '7px' : '10px',
+          color: '#9ca3af',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        this.endOverlay = [panel, endLine1, endLine2, dateText, nameLabel, submitBtn, skipBtn];
+
+        const showFinalScreen = (scores) => {
+          inputEl.remove();
+          this.clearOverlay(this.endOverlay);
+          this.endOverlay = [];
+          this._endPhase = 'done';
+
+          const p2 = this.drawPanel(cx, cy, pw, ph);
+          const items = [p2];
+
+          const lbTitle = this.add.text(cx, cy - (isPortrait ? 165 : 175), 'LEADERBOARD', {
+            fontSize: isPortrait ? '12px' : '16px',
+            color: '#00ffcc',
+            fontStyle: 'bold',
+            fontFamily: "'Press Start 2P', monospace"
+          }).setOrigin(0.5);
+          items.push(lbTitle);
+
+          const colW = pw - 40;
+          const startY = lbTitle.y + 28;
+          const rowH = isPortrait ? 18 : 22;
+          const nameFontSize = isPortrait ? '7px' : '10px';
+
+          if (scores.length === 0) {
+            const noData = this.add.text(cx, startY + 30, 'No scores yet!', {
+              fontSize: nameFontSize, color: '#9ca3af',
+              fontFamily: "'Press Start 2P', monospace"
+            }).setOrigin(0.5);
+            items.push(noData);
+          } else {
+            scores.slice(0, 10).forEach((entry, i) => {
+              const y = startY + i * rowH;
+              const rank = this.add.text(cx - colW / 2, y, (i + 1) + '.', {
+                fontSize: nameFontSize, color: i < 3 ? '#fbbf24' : '#d1d5db',
+                fontFamily: "'Press Start 2P', monospace"
+              });
+              const name = this.add.text(cx - colW / 2 + (isPortrait ? 24 : 30), y, (entry.username || '???').substring(0, 16), {
+                fontSize: nameFontSize, color: '#ffffff',
+                fontFamily: "'Press Start 2P', monospace"
+              });
+              const sc = this.add.text(cx + colW / 2, y, String(entry.score), {
+                fontSize: nameFontSize, color: '#00ffcc',
+                fontFamily: "'Press Start 2P', monospace"
+              }).setOrigin(1, 0);
+              items.push(rank, name, sc);
+            });
+          }
+
+          const restartText = this.add.text(cx, cy + (isPortrait ? 160 : 170), 'Tap or press Space to restart', {
+            fontSize: isPortrait ? '8px' : '12px',
+            color: '#ffffff',
+            fontFamily: "'Press Start 2P', monospace"
+          }).setOrigin(0.5);
+          items.push(restartText);
+
+          this.endOverlay = items;
+        };
+
+        const doSubmit = async () => {
+          const name = inputEl.value.trim();
+          if (!name) { inputEl.style.borderColor = '#ef4444'; return; }
+          _playerName = name;
+          submitBtn.setText('SAVING...');
+          submitBtn.disableInteractive();
+          this._endPhase = 'submitting';
+          await Leaderboard.submitScore(name, this.score);
+          const scores = await Leaderboard.getScores();
+          showFinalScreen(scores);
+        };
+
+        const doSkip = async () => {
+          _playerName = inputEl.value.trim();
+          this._endPhase = 'submitting';
+          const scores = await Leaderboard.getScores();
+          showFinalScreen(scores);
+        };
+
+        submitBtn.on('pointerdown', doSubmit);
+        skipBtn.on('pointerdown', doSkip);
+        inputEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') doSubmit();
+        });
       }
 
       update() {
         if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
           if (this.gameOver) {
-            this.scene.restart();
+            if (this._endPhase === 'done') this.scene.restart();
             return;
           }
           if (!this.gameStarted) {

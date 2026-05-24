@@ -1,0 +1,6 @@
+.DS_Store
+assets/
+
+# Supabase local dev
+supabase/.temp/
+supabase/.env

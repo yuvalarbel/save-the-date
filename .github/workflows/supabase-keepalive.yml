@@ -1,0 +1,15 @@
+name: Supabase Keep-Alive
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Every Monday at 8am UTC
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase to prevent free-tier pause
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            "https://tlufrkdpgcxesznarsev.supabase.co/rest/v1/game_sessions?select=id&limit=1" \
+            -H "apikey: sb_publishable_qv58_peCrSH-N3k7k2h_jA_oj-r2tLo"
