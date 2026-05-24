@@ -139,6 +139,8 @@
         this.gameStarted = false;
         this.gameOver = false;
         this._endPhase = null;
+        this._endReady = false;
+        this._showingLeaderboard = false;
         this.score = 0;
         this.lives = 3;
         this.fallSpeed = 180;
@@ -215,9 +217,10 @@
         this.touchDir = 0;
         this.input.on('pointerdown', (pointer) => {
           if (this.gameOver) {
-            if (this._endPhase === 'done') this.scene.restart();
+            if (this._endPhase === 'done' && this._endReady) this.scene.restart();
             return;
           }
+          if (this._showingLeaderboard) return; /* block while leaderboard overlay is up */
           if (!this.gameStarted) {
             this.startGame();
             return;
@@ -404,12 +407,19 @@
         button.on('pointerdown', () => this.startGame());
 
         const lbBtn = this.add.text(cx, cy + 130, 'LEADERBOARD', {
-          fontSize: isPortrait ? '8px' : '12px',
-          color: '#9ca3af',
-          fontFamily: "'Press Start 2P', monospace"
+          fontSize: isPortrait ? '12px' : '16px',
+          color: '#020617',
+          fontStyle: 'bold',
+          fontFamily: "'Press Start 2P', monospace",
+          backgroundColor: '#fbbf24',
+          padding: { x: 14, y: 8 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-        lbBtn.on('pointerdown', () => this.showLeaderboardScreen());
+        lbBtn.on('pointerdown', (pointer, lx, ly, event) => {
+          event.stopPropagation(); /* prevent triggering startGame */
+          this._showingLeaderboard = true;
+          this.showLeaderboardScreen();
+        });
 
         this.startOverlay = [panel, title, subtitleMain, subtitleSub, subtitleHint, button, lbBtn];
       }
@@ -482,7 +492,9 @@
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
         items.push(backBtn);
 
-        backBtn.on('pointerdown', () => {
+        backBtn.on('pointerdown', (pointer, lx, ly, event) => {
+          event.stopPropagation();
+          this._showingLeaderboard = false;
           this.clearOverlay(this.startOverlay);
           this.startOverlay = [];
           this.showStartScreen();
@@ -614,15 +626,18 @@
       endGame() {
         if (this.gameOver) return;
         this.gameOver = true;
-        this._endPhase = 'name'; /* 'name' -> 'submitting' -> 'leaderboard' -> 'done' */
+        this._endPhase = 'score'; /* score -> name -> submitting -> done */
+        this._endReady = false;
 
         const cx = W / 2;
         const cy = H / 2;
         const pw = Math.min(W - 40, 520);
-        const ph = isPortrait ? 380 : 400;
+        const ph = isPortrait ? 340 : 350;
+
+        /* ── Phase 1: Score screen (1s delay before interactive) ── */
         const panel = this.drawPanel(cx, cy, pw, ph);
 
-        const endLine1 = this.add.text(cx, cy - (isPortrait ? 160 : 170), 'You saved the date ' + this.score + ' times!', {
+        const endLine1 = this.add.text(cx, cy - 95, 'You saved the date ' + this.score + ' times!', {
           fontSize: isPortrait ? '10px' : '15px',
           color: '#ffffff',
           align: 'center',
@@ -632,7 +647,7 @@
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
-        const endLine2 = this.add.text(cx, endLine1.y + endLine1.height + 12, 'Now save it once more:', {
+        const endLine2 = this.add.text(cx, endLine1.y + endLine1.height + 16, 'Now save it once more:', {
           fontSize: isPortrait ? '13px' : '19px',
           color: '#ffffff',
           align: 'center',
@@ -640,21 +655,84 @@
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
-        const dateText = this.add.text(cx, endLine2.y + endLine2.height + (isPortrait ? 14 : 18), '5.6.26', {
-          fontSize: isPortrait ? '36px' : '44px',
+        const dateText = this.add.text(cx, cy + 20, '5.6.26', {
+          fontSize: isPortrait ? '40px' : '48px',
           color: '#00ffcc',
           fontStyle: 'bold',
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
-        /* ── Name input for leaderboard ── */
-        const nameLabel = this.add.text(cx, dateText.y + dateText.height / 2 + (isPortrait ? 20 : 26), 'Enter your name:', {
+        /* Buttons start hidden, appear after 1s */
+        const submitScoreBtn = this.add.text(cx, cy + 100, 'SUBMIT SCORE', {
+          fontSize: isPortrait ? '10px' : '14px',
+          color: '#020617',
+          fontStyle: 'bold',
+          fontFamily: "'Press Start 2P', monospace",
+          backgroundColor: '#00ffcc',
+          padding: { x: 12, y: 8 }
+        }).setOrigin(0.5).setAlpha(0);
+
+        const restartBtn = this.add.text(cx, cy + 140, 'Tap or press Space to restart', {
+          fontSize: isPortrait ? '7px' : '10px',
+          color: '#9ca3af',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5).setAlpha(0);
+
+        this.endOverlay = [panel, endLine1, endLine2, dateText, submitScoreBtn, restartBtn];
+
+        /* After 1 second, fade in buttons and make them interactive */
+        this.time.delayedCall(1000, () => {
+          this._endReady = true;
+          this.tweens.add({ targets: submitScoreBtn, alpha: 1, duration: 300 });
+          this.tweens.add({ targets: restartBtn, alpha: 1, duration: 300 });
+          submitScoreBtn.setInteractive({ useHandCursor: true });
+          restartBtn.setInteractive({ useHandCursor: true });
+
+          submitScoreBtn.on('pointerdown', (p, lx, ly, ev) => {
+            ev.stopPropagation();
+            this.showNameInputScreen();
+          });
+          restartBtn.on('pointerdown', (p, lx, ly, ev) => {
+            ev.stopPropagation();
+            this.scene.restart();
+          });
+        });
+      }
+
+      /* ── Phase 2: Name input ── */
+      showNameInputScreen() {
+        this._endReady = false;
+        this._endPhase = 'name';
+        this.clearOverlay(this.endOverlay);
+        this.endOverlay = [];
+
+        const cx = W / 2;
+        const cy = H / 2;
+        const pw = Math.min(W - 40, 520);
+        const ph = isPortrait ? 300 : 320;
+        const panel = this.drawPanel(cx, cy, pw, ph);
+
+        const nameTitle = this.add.text(cx, cy - 100, 'SAVE YOUR SCORE!', {
+          fontSize: isPortrait ? '12px' : '16px',
+          color: '#00ffcc',
+          fontStyle: 'bold',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5);
+
+        const scoreReminder = this.add.text(cx, cy - 65, 'Score: ' + this.score, {
+          fontSize: isPortrait ? '10px' : '14px',
+          color: '#fbbf24',
+          fontStyle: 'bold',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5);
+
+        const nameLabel = this.add.text(cx, cy - 30, 'Enter your name:', {
           fontSize: isPortrait ? '8px' : '11px',
           color: '#d1d5db',
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5);
 
-        /* HTML input overlay for name entry */
+        /* HTML input overlay */
         const inputEl = document.createElement('input');
         inputEl.type = 'text';
         inputEl.maxLength = 24;
@@ -667,10 +745,9 @@
         document.body.appendChild(inputEl);
         inputEl.focus();
 
-        /* Position the input relative to the game canvas */
-        const positionInput = () => {
-          const canvas = document.querySelector('#game-container canvas');
-          if (!canvas) return;
+        /* Position input relative to canvas */
+        const canvas = document.querySelector('#game-container canvas');
+        if (canvas) {
           const rect = canvas.getBoundingClientRect();
           const scaleY = rect.height / H;
           const scaleX = rect.width / W;
@@ -679,82 +756,24 @@
           inputEl.style.top = (rect.top + inputY * scaleY) + 'px';
           inputEl.style.width = Math.min(200, pw * scaleX * 0.6) + 'px';
           inputEl.style.fontSize = Math.max(10, 14 * scaleX) + 'px';
-        };
-        positionInput();
+        }
 
-        const submitBtn = this.add.text(cx, nameLabel.y + (isPortrait ? 50 : 56), 'SUBMIT SCORE', {
+        const submitBtn = this.add.text(cx, cy + 40, 'SUBMIT', {
           fontSize: isPortrait ? '10px' : '14px',
           color: '#020617',
           fontStyle: 'bold',
           fontFamily: "'Press Start 2P', monospace",
           backgroundColor: '#00ffcc',
-          padding: { x: 12, y: 8 }
+          padding: { x: 14, y: 8 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-        const skipBtn = this.add.text(cx, submitBtn.y + submitBtn.height + (isPortrait ? 12 : 16), 'Skip', {
+        const skipBtn = this.add.text(cx, cy + 85, 'Skip', {
           fontSize: isPortrait ? '7px' : '10px',
           color: '#9ca3af',
           fontFamily: "'Press Start 2P', monospace"
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-        this.endOverlay = [panel, endLine1, endLine2, dateText, nameLabel, submitBtn, skipBtn];
-
-        const showFinalScreen = (scores) => {
-          inputEl.remove();
-          this.clearOverlay(this.endOverlay);
-          this.endOverlay = [];
-          this._endPhase = 'done';
-
-          const p2 = this.drawPanel(cx, cy, pw, ph);
-          const items = [p2];
-
-          const lbTitle = this.add.text(cx, cy - (isPortrait ? 165 : 175), 'LEADERBOARD', {
-            fontSize: isPortrait ? '12px' : '16px',
-            color: '#00ffcc',
-            fontStyle: 'bold',
-            fontFamily: "'Press Start 2P', monospace"
-          }).setOrigin(0.5);
-          items.push(lbTitle);
-
-          const colW = pw - 40;
-          const startY = lbTitle.y + 28;
-          const rowH = isPortrait ? 18 : 22;
-          const nameFontSize = isPortrait ? '7px' : '10px';
-
-          if (scores.length === 0) {
-            const noData = this.add.text(cx, startY + 30, 'No scores yet!', {
-              fontSize: nameFontSize, color: '#9ca3af',
-              fontFamily: "'Press Start 2P', monospace"
-            }).setOrigin(0.5);
-            items.push(noData);
-          } else {
-            scores.slice(0, 10).forEach((entry, i) => {
-              const y = startY + i * rowH;
-              const rank = this.add.text(cx - colW / 2, y, (i + 1) + '.', {
-                fontSize: nameFontSize, color: i < 3 ? '#fbbf24' : '#d1d5db',
-                fontFamily: "'Press Start 2P', monospace"
-              });
-              const name = this.add.text(cx - colW / 2 + (isPortrait ? 24 : 30), y, (entry.username || '???').substring(0, 16), {
-                fontSize: nameFontSize, color: '#ffffff',
-                fontFamily: "'Press Start 2P', monospace"
-              });
-              const sc = this.add.text(cx + colW / 2, y, String(entry.score), {
-                fontSize: nameFontSize, color: '#00ffcc',
-                fontFamily: "'Press Start 2P', monospace"
-              }).setOrigin(1, 0);
-              items.push(rank, name, sc);
-            });
-          }
-
-          const restartText = this.add.text(cx, cy + (isPortrait ? 160 : 170), 'Tap or press Space to restart', {
-            fontSize: isPortrait ? '8px' : '12px',
-            color: '#ffffff',
-            fontFamily: "'Press Start 2P', monospace"
-          }).setOrigin(0.5);
-          items.push(restartText);
-
-          this.endOverlay = items;
-        };
+        this.endOverlay = [panel, nameTitle, scoreReminder, nameLabel, submitBtn, skipBtn];
 
         const doSubmit = async () => {
           const name = inputEl.value.trim();
@@ -764,30 +783,103 @@
           submitBtn.disableInteractive();
           this._endPhase = 'submitting';
           await Leaderboard.submitScore(name, this.score);
-          const scores = await Leaderboard.getScores();
-          showFinalScreen(scores);
+          inputEl.remove();
+          this.showEndLeaderboard();
         };
 
         const doSkip = async () => {
           _playerName = inputEl.value.trim();
-          this._endPhase = 'submitting';
-          const scores = await Leaderboard.getScores();
-          showFinalScreen(scores);
+          inputEl.remove();
+          this.showEndLeaderboard();
         };
 
-        submitBtn.on('pointerdown', doSubmit);
-        skipBtn.on('pointerdown', doSkip);
-        inputEl.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') doSubmit();
-        });
+        submitBtn.on('pointerdown', (p, lx, ly, ev) => { ev.stopPropagation(); doSubmit(); });
+        skipBtn.on('pointerdown', (p, lx, ly, ev) => { ev.stopPropagation(); doSkip(); });
+        inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSubmit(); });
+      }
+
+      /* ── Phase 3: End-of-game leaderboard ── */
+      async showEndLeaderboard() {
+        this.clearOverlay(this.endOverlay);
+        this.endOverlay = [];
+        this._endPhase = 'done';
+        this._endReady = false;
+
+        const cx = W / 2;
+        const cy = H / 2;
+        const pw = Math.min(W - 40, 520);
+        const ph = isPortrait ? 380 : 400;
+        const panel = this.drawPanel(cx, cy, pw, ph);
+        const items = [panel];
+
+        const lbTitle = this.add.text(cx, cy - (isPortrait ? 165 : 175), 'LEADERBOARD', {
+          fontSize: isPortrait ? '14px' : '18px',
+          color: '#00ffcc',
+          fontStyle: 'bold',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5);
+        items.push(lbTitle);
+
+        const loading = this.add.text(cx, cy, 'Loading...', {
+          fontSize: isPortrait ? '8px' : '11px',
+          color: '#9ca3af',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5);
+        items.push(loading);
+        this.endOverlay = items;
+
+        const scores = await Leaderboard.getScores();
+        loading.destroy();
+
+        const colW = pw - 40;
+        const startY = lbTitle.y + 32;
+        const rowH = isPortrait ? 20 : 24;
+        const fs = isPortrait ? '7px' : '11px';
+
+        if (scores.length === 0) {
+          const noData = this.add.text(cx, startY + 40, 'No scores yet!\nBe the first!', {
+            fontSize: fs, color: '#9ca3af', align: 'center', lineSpacing: 8,
+            fontFamily: "'Press Start 2P', monospace"
+          }).setOrigin(0.5);
+          items.push(noData);
+        } else {
+          scores.slice(0, 10).forEach((entry, i) => {
+            const y = startY + i * rowH;
+            const rank = this.add.text(cx - colW / 2, y, (i + 1) + '.', {
+              fontSize: fs, color: i < 3 ? '#fbbf24' : '#d1d5db',
+              fontFamily: "'Press Start 2P', monospace"
+            });
+            const name = this.add.text(cx - colW / 2 + (isPortrait ? 26 : 34), y, (entry.username || '???').substring(0, 16), {
+              fontSize: fs, color: '#ffffff',
+              fontFamily: "'Press Start 2P', monospace"
+            });
+            const sc = this.add.text(cx + colW / 2, y, String(entry.score), {
+              fontSize: fs, color: '#00ffcc',
+              fontFamily: "'Press Start 2P', monospace"
+            }).setOrigin(1, 0);
+            items.push(rank, name, sc);
+          });
+        }
+
+        const restartText = this.add.text(cx, cy + (isPortrait ? 160 : 170), 'Tap or press Space to restart', {
+          fontSize: isPortrait ? '8px' : '12px',
+          color: '#ffffff',
+          fontFamily: "'Press Start 2P', monospace"
+        }).setOrigin(0.5);
+        items.push(restartText);
+
+        this.endOverlay = items;
+        /* Small delay before restart is allowed */
+        this.time.delayedCall(500, () => { this._endReady = true; });
       }
 
       update() {
         if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
           if (this.gameOver) {
-            if (this._endPhase === 'done') this.scene.restart();
+            if (this._endPhase === 'done' && this._endReady) this.scene.restart();
             return;
           }
+          if (this._showingLeaderboard) return;
           if (!this.gameStarted) {
             this.startGame();
             return;
