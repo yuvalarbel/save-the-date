@@ -784,18 +784,25 @@
           this._endPhase = 'submitting';
           await Leaderboard.submitScore(name, this.score);
           inputEl.remove();
+          this.refocusCanvas();
           this.showEndLeaderboard();
         };
 
         const doSkip = async () => {
           _playerName = inputEl.value.trim();
           inputEl.remove();
+          this.refocusCanvas();
           this.showEndLeaderboard();
         };
 
         submitBtn.on('pointerdown', (p, lx, ly, ev) => { ev.stopPropagation(); doSubmit(); });
         skipBtn.on('pointerdown', (p, lx, ly, ev) => { ev.stopPropagation(); doSkip(); });
         inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSubmit(); });
+      }
+
+      refocusCanvas() {
+        const canvas = document.querySelector('#game-container canvas');
+        if (canvas) canvas.focus();
       }
 
       /* ── Phase 3: End-of-game leaderboard ── */
@@ -870,7 +877,10 @@
 
         this.endOverlay = items;
         /* Small delay before restart is allowed */
-        this.time.delayedCall(500, () => { this._endReady = true; });
+        this.time.delayedCall(500, () => {
+          this._endReady = true;
+          this.refocusCanvas();
+        });
       }
 
       update() {
